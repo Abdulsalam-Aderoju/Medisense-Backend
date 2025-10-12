@@ -32,8 +32,6 @@ class PHCUser(Base):
     
     capacity = Column(Integer, default=100)
     consecutive_overload_days = Column(Integer, default=0)
-    latitude = Column(Float, nullable=True)
-    longitude = Column(Float, nullable=True)
 
 
 
@@ -69,8 +67,7 @@ class Inventory(Base):
     __tablename__ = "inventory"
 
     id = Column(Integer, primary_key=True, index=True)
-    phc_id = Column(Integer, ForeignKey("phc_users.id", ondelete="CASCADE"), nullable=False)
-    phc_name = Column(String, nullable=False)
+    phc_name = Column(String, nullable=True, index=True)  # optional, can be null
     item_name = Column(String, nullable=False)
     item_type = Column(String, nullable=False)
     current_stock = Column(Integer, nullable=False)
@@ -78,6 +75,7 @@ class Inventory(Base):
     daily_consumption_rate = Column(Float, nullable=False)
     days_remaining = Column(Float, nullable=True)
     last_updated = Column(DateTime(timezone=True), server_default=func.now(), onupdate=func.now())
+
 
 
 # ---------- RESTOCK REQUEST ----------

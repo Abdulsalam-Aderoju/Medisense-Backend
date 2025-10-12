@@ -3,7 +3,7 @@
 from fastapi import APIRouter, Depends, HTTPException
 from sqlalchemy.orm import Session
 from sklearn.linear_model import LinearRegression
-from datetime import datetime, timedelta
+from datetime import datetime
 import numpy as np
 
 from database import get_db
@@ -25,12 +25,16 @@ def record_workload(payload: WorkloadLogCreate, db: Session = Depends(get_db)):
     return log
 
 
-# 2️⃣ Forecast tomorrow’s patient load + rerouting logic
-@router.post("/forecast/{phc_id}", response_model=WorkloadForecastResponse)
-def forecast_next_day(phc_id: int, db: Session = Depends(get_db)):
+# 2️⃣ Forecast tomorrow’s patient load
+@router.post("/forecast/{phc_name}", response_model=WorkloadForecastResponse)
+def forecast_next_day(phc_name: str, db: Session = Depends(get_db)):
+    phc = db.query(PHCUser).filter(PHCUser.phc_name == phc_name).first()
+    if not phc:
+        raise HTTPException(status_code=404, detail="PHC not found")
+
     logs = (
         db.query(PHCWorkloadLog)
-        .filter(PHCWorkloadLog.phc_id == phc_id)
+        .filter(PHCWorkloadLog.phc_name == phc_name)
         .order_by(PHCWorkloadLog.date.desc())
         .limit(14)
         .all()
@@ -44,10 +48,6 @@ def forecast_next_day(phc_id: int, db: Session = Depends(get_db)):
     model = LinearRegression().fit(X, y)
     forecast = float(model.predict([[len(logs) + 1]])[0])
 
-    phc = db.query(PHCUser).filter(PHCUser.id == phc_id).first()
-    if not phc:
-        raise HTTPException(status_code=404, detail="PHC not found")
-
     # --- Threshold logic ---
     capacity = phc.capacity
     overload_days = phc.consecutive_overload_days or 0
@@ -55,47 +55,18 @@ def forecast_next_day(phc_id: int, db: Session = Depends(get_db)):
 
     if forecast > capacity:
         overload_days += 1
-        message = (
-            f"⚠️ Forecast ({forecast:.1f}) exceeds capacity ({capacity}). "
-            "Suggest rerouting some patients to nearby PHCs."
-        )
-
-        # If overload persists for 3 consecutive days → notify LGA admin
-        # if overload_days >= 3:
-        #     message = (
-        #         "🚨 PHC overloaded for 3 days! LGA Admin has been notified to consider adding staff."
-        #     )
-        #     # Stub for admin notification — can later be integrated with email or dashboard
-        #     print(f"[ADMIN ALERT] PHC {phc.phc_name} is overwhelmed. Email: {phc.lga_admin_email}")
+        message = f"⚠️ Forecast ({forecast:.1f}) exceeds capacity ({capacity})."
     else:
         overload_days = 0
 
     phc.consecutive_overload_days = overload_days
     db.commit()
 
-    # --- Rerouting suggestion ---
-    reroute_suggestions = []
-    if forecast > capacity and phc.latitude and phc.longitude:
-        nearby = (
-            db.query(PHCUser)
-            .filter(PHCUser.id != phc_id)
-            .filter(PHCUser.latitude.isnot(None))
-            .all()
-        )
-        for n in nearby:
-            # simple distance calc (in degrees — approximate)
-            distance = ((phc.latitude - n.latitude) ** 2 + (phc.longitude - n.longitude) ** 2) ** 0.5
-            if distance < 0.15:  # roughly ~15 km
-                reroute_suggestions.append({"phc_name": n.phc_name, "distance": round(distance * 111, 1)})
-
     return WorkloadForecastResponse(
         forecast_next_day=forecast,
         capacity=capacity,
         overload_days=overload_days,
-        message=message + (
-            f" Suggested nearby PHCs: {', '.join([r['phc_name'] for r in reroute_suggestions])}"
-            if reroute_suggestions else ""
-        )
+        message=message
     )
 
 
