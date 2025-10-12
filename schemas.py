@@ -1,0 +1,241 @@
+from pydantic import BaseModel, Field, EmailStr
+from typing import Optional, List
+import enum
+from datetime import datetime
+
+
+class Sex(str, enum.Enum):
+    """Enumeration for patient biological sex."""
+    Male = "Male"
+    Female = "Female"
+
+class VisitType(str, enum.Enum):
+    """Enumeration for the immediate triage/queue category."""
+    Emergency = "Emergency"
+    Acute = "Acute"
+    Routine = "Routine"
+    FollowUp = "Follow-up"
+
+
+# ---------------- PHC User ----------------
+class PHCSignupRequest(BaseModel):
+    phc_name: str
+    email: EmailStr
+    password: str = Field(..., min_length=3, max_length=72)
+    role: str = "phc"  # default role for frontend dropdown
+    capacity: Optional[int] = 100
+    consecutive_overload_days: Optional[int] = 0
+    latitude: Optional[float]
+    longitude: Optional[float]
+
+class PHCSignupResponse(BaseModel):
+    message: str
+    phc_name: str
+    role: str
+
+class PHCLoginRequest(BaseModel):
+    email: EmailStr
+    password: str
+    role: str = "phc"  # optional role check
+
+class PHCLoginResponse(BaseModel):
+    access_token: str
+    token_type: str = "bearer"
+    role: str
+    redirect_to: str  # /frontline.html
+
+# ---------------- Health Admin ----------------
+class HealthAdminSignupRequest(BaseModel):
+    full_name: str
+    email: EmailStr
+    password: str = Field(..., min_length=3, max_length=72)
+    role: str = "health_admin"
+
+class HealthAdminSignupResponse(BaseModel):
+    message: str
+    full_name: str
+    role: str
+
+class HealthAdminLoginRequest(BaseModel):
+    email: EmailStr
+    password: str
+    role: str = "health_admin"
+
+class HealthAdminLoginResponse(BaseModel):
+    access_token: str
+    token_type: str = "bearer"
+    role: str
+    redirect_to: str  # /admin.html
+
+
+
+class PatientBase(BaseModel):
+    """
+    Base schema defining the shared fields for Patient creation and reading.
+    Fields correspond directly to the database columns (excluding DB-managed fields).
+    """
+    name: str = Field(..., max_length=255, description="Patient's full name.")
+    age: int = Field(..., gt=0, description="Patient's age in years.")
+    sex: Sex = Field(..., description="Biological sex (Male or Female).")
+    
+    # Note: Pydantic handles the List[str] conversion from JSON array input,
+    # which maps to ARRAY(String) in PostgreSQL/SQLAlchemy.
+    symptoms: List[str] = Field(..., description="List of raw symptoms reported by the patient.")
+    visit_type: VisitType = Field(..., description="Triage category/intent for the visit.")
+
+    # Vitals is stored as a JSON string in the DB (Text), so we validate it as a string here.
+    # In a more advanced setup, this could be a nested Pydantic model (e.g., VitalsModel).
+    vitals: Optional[str] = Field(None, description="Vitals data, stored as a JSON string (e.g., '{\"temp\": 37.0}').")
+    
+    medical_history: Optional[List[str]] = Field(None, description="List of known past medical conditions.")
+
+# --- 3. Schemas for API Operations ---
+
+class PatientCreate(PatientBase):
+    """Schema used when creating a new patient record (input validation)."""
+    # Inherits all required fields from PatientBase
+    pass
+
+class PatientUpdate(BaseModel):
+    """
+    Schema used when updating an existing patient record.
+    All fields are Optional, as an update might only change one attribute.
+    """
+    name: Optional[str] = Field(None, max_length=255)
+    age: Optional[int] = Field(None, gt=0)
+    sex: Optional[Sex] = None
+    symptoms: Optional[List[str]] = None
+    visit_type: Optional[VisitType] = None
+    vitals: Optional[str] = None
+    medical_history: Optional[List[str]] = None
+
+class PatientRead(PatientBase):
+    """
+    Schema used when reading or returning patient data (output serialization).
+    Includes database-managed fields like ID and timestamps.
+    """
+    id: int = Field(..., description="Database primary key ID.")
+    created_at: datetime = Field(..., description="Timestamp of record creation.")
+    updated_at: datetime = Field(..., description="Timestamp of last update.")
+
+    class Config:
+        # This is essential for compatibility with SQLAlchemy ORM objects.
+        # It tells Pydantic to read data from ORM attributes instead of just dictionary keys.
+        from_attributes = True
+
+class PatientCreateResponse(BaseModel):
+    id: int
+    name: str
+    age: int
+    message: str
+
+
+
+class InventoryItem(BaseModel):
+    item_name: str
+    item_type: str
+    current_stock: int
+    daily_consumption_rate: float
+    unit: str
+    days_remaining: Optional[float]
+
+
+
+
+class RestockRequestCreate(BaseModel):
+    item_name: str
+    quantity_needed: int
+    phc_id: int
+    phc_name: str  # add if you want PHC name stored
+
+
+class RestockRequestRead(RestockRequestCreate):
+    id: int
+    request_date: datetime
+    status: str
+    comments: Optional[str]
+    days_remaining: Optional[float]
+    priority_level: Optional[str]
+
+    class Config:
+        orm_mode = True
+
+
+class RestockRequestUpdate(BaseModel):
+    status: str
+    comments: Optional[str] = None
+
+
+
+
+
+
+class RestockRequestCreate(BaseModel):
+    item_name: str
+    quantity_needed: int
+    phc_id: int
+    phc_name: str
+
+class RestockRequestRead(RestockRequestCreate):
+    id: int
+    request_date: datetime
+    status: str
+    comments: Optional[str]
+
+    class Config:
+        orm_mode = True
+
+class RestockRequestUpdate(BaseModel):
+    status: str
+    comments: Optional[str] = None
+
+
+class WorkloadLogCreate(BaseModel):
+    phc_id: int
+    current_queue_count: int
+    avg_wait_time: float
+    completed_visits_today: int
+
+class WorkloadForecastResponse(BaseModel):
+    forecast_next_day: float
+    capacity: int
+    overload_days: int
+    message: str
+
+class WorkloadLogResponse(BaseModel):
+    id: int
+    phc_id: int
+    date: datetime
+    current_queue_count: int
+    avg_wait_time: float
+    completed_visits_today: int
+
+    class Config:
+        orm_mode = True
+
+
+
+
+
+class FeedbackCreate(BaseModel):
+    phc_id: int
+    phc_name: str
+    category: str
+    message: str
+
+
+class FeedbackUpdate(BaseModel):
+    status: str  # pending / resolved / in-progress
+
+
+class FeedbackRead(BaseModel):
+    id: int
+    phc_id: int
+    phc_name: str
+    category: str
+    message: str
+    status: str
+    created_at: datetime
+
+    class Config:
+        orm_mode = True

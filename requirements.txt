@@ -1,0 +1,15 @@
+fastapi
+uvicorn[standard]
+passlib
+mysqlclient
+sqlalchemy
+bcrypt==4.0.1
+psycopg2-binary
+alembic
+google-genai
+PyJWT
+numpy
+scikit-learn
+apscheduler
+pydantic[email]
+jwt
