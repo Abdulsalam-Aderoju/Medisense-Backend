@@ -12,4 +12,5 @@ numpy
 scikit-learn
 apscheduler
 pydantic[email]
-jwt
+python-jose[cryptography]
+python-multipart

@@ -3,9 +3,7 @@ from sqlalchemy.orm import Session
 from pydantic import BaseModel, Field
 from typing import List, Optional
 
-# Assuming these models/schemas are defined in their respective files
-# NOTE: Ensure PatientCreate, PatientRead, PatientUpdate are imported from schemas.py
-# and Patient (SQLAlchemy model) is imported from models.py
+
 from schemas import PatientCreate, PatientCreateResponse # Import Pydantic schemas
 from models import Patient # Import SQLAlchemy model
 from database import get_db
@@ -18,7 +16,6 @@ import json
 
 # Initialize the router with a prefix
 router = APIRouter(prefix="/patients", tags=["patients"])
-
 
 try:
     client = genai.Client(api_key="AIzaSyDUdAcNHyVpqR88dgbY_bsXCdAzCnv-No4")
@@ -63,7 +60,7 @@ def register_patient(patient_data: PatientCreate, db: Session = Depends(get_db))
         id=db_patient.id,
         name=db_patient.name,
         age=db_patient.age,
-        message="Patient registered successfully"
+        message="Patient registered successfully with ID {}".format(db_patient.id)
     )
         
     except Exception as e:

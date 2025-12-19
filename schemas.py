@@ -1,5 +1,5 @@
 from pydantic import BaseModel, Field, EmailStr
-from typing import Optional, List
+from typing import Optional, List, Literal
 import enum
 from datetime import datetime
 
@@ -17,58 +17,47 @@ class VisitType(str, enum.Enum):
     FollowUp = "Follow-up"
 
 
-# ---------------- PHC User ----------------
-class PHCSignupRequest(BaseModel):
-    phc_name: str
+
+
+
+# ---------------- AUTHENTICATION SCHEMAS ----------------
+class UserSignup(BaseModel):
+    name: str = Field(..., min_length=3, 
+    description="PHC name or LGA name, e.g. 'Igbogbo Primary Health Centre' or 'Ikorodu LGA'")
     email: EmailStr
-    password: str = Field(..., min_length=3, max_length=72)
-    role: str = "phc"  # default role for frontend dropdown
-    capacity: Optional[int] = 100
-    consecutive_overload_days: Optional[int] = 0
-    latitude: Optional[float]
-    longitude: Optional[float]
+    password: str = Field(..., min_length=6)
+    role: Literal["phc", "lga"]
+    lga_id: str = Field(..., example="lga-ikorodu")
 
-class PHCSignupResponse(BaseModel):
-    message: str
-    phc_name: str
-    role: str
+    # Only for PHC accounts
+    phc_id: str | None = Field(None, example="phc-007")
 
-class PHCLoginRequest(BaseModel):
+
+class UserLogin(BaseModel):
     email: EmailStr
     password: str
-    role: str = "phc"  # optional role check
+    operator_name: str = Field(..., min_length=3,
+        description="Name of the person using the account today, e.g. 'Nurse Chioma'")
 
-class PHCLoginResponse(BaseModel):
+class TokenResponse(BaseModel):
     access_token: str
     token_type: str = "bearer"
     role: str
-    redirect_to: str  # /frontline.html
 
-# ---------------- Health Admin ----------------
-class HealthAdminSignupRequest(BaseModel):
+class UserRead(BaseModel):
+    id: int
     full_name: str
     email: EmailStr
-    password: str = Field(..., min_length=3, max_length=72)
-    role: str = "health_admin"
-
-class HealthAdminSignupResponse(BaseModel):
-    message: str
-    full_name: str
     role: str
+    created_at: datetime
 
-class HealthAdminLoginRequest(BaseModel):
-    email: EmailStr
-    password: str
-    role: str = "health_admin"
-
-class HealthAdminLoginResponse(BaseModel):
-    access_token: str
-    token_type: str = "bearer"
-    role: str
-    redirect_to: str  # /admin.html
+    class Config:
+        orm_mode = True
 
 
 
+
+# ---------- PATIENT SCHEMAS ----------
 class PatientBase(BaseModel):
     """
     Base schema defining the shared fields for Patient creation and reading.
@@ -131,65 +120,97 @@ class PatientCreateResponse(BaseModel):
 
 
 
-class InventoryItem(BaseModel):
+# ---------------- INVENTORY & RESTOCK SCHEMAS ----------------
+class LowStockResponse(BaseModel):
     item_name: str
-    item_type: str
     current_stock: int
     daily_consumption_rate: float
     unit: str
-    days_remaining: Optional[float]
-
-
-
+    days_remaining: float
 
 class RestockRequestCreate(BaseModel):
     item_name: str
-    quantity_needed: int
-    phc_id: int
-    phc_name: str  # add if you want PHC name stored
+    quantity_needed: int = Field(..., gt=0)
 
-
-class RestockRequestRead(RestockRequestCreate):
+class RestockRequestRead(BaseModel):
     id: int
-    request_date: datetime
-    status: str
-    comments: Optional[str]
-    days_remaining: Optional[float]
-    priority_level: Optional[str]
-
-    class Config:
-        orm_mode = True
-
-
-class RestockRequestUpdate(BaseModel):
-    status: str
-    comments: Optional[str] = None
-
-
-
-
-
-
-class RestockRequestCreate(BaseModel):
     item_name: str
     quantity_needed: int
-    phc_id: int
+    phc_id: str
     phc_name: str
-
-class RestockRequestRead(RestockRequestCreate):
-    id: int
+    lga_id: str
+    requested_by: str
     request_date: datetime
     status: str
-    comments: Optional[str]
+    comments: Optional[str] = None
+    processed_by: Optional[str] = None
+    priority_level: Optional[str] = None
 
     class Config:
-        orm_mode = True
+        from_attributes = True
 
 class RestockRequestUpdate(BaseModel):
-    status: str
+    status: Literal["approved", "declined"]
     comments: Optional[str] = None
 
+class AutoRestockResponse(BaseModel):
+    created_requests: int
+    skipped_items: List[str] = []
 
+class RestockRequestEdit(BaseModel):
+    item_name: Optional[str] = None
+    quantity_needed: Optional[int] = Field(None, gt=0)
+
+
+
+
+
+# --- ISSUES ---
+class IssueCreate(BaseModel):
+    category: str
+    priority: str
+    description: str
+
+class IssueRead(IssueCreate):
+    id: int
+    status: str
+    created_at: datetime
+    class Config:
+        from_attributes = True
+
+# --- REPORTS ---
+class ReportGenerate(BaseModel):
+    month_str: str # "2025-10"
+
+class ReportUpdate(BaseModel):
+    content: str # User edits the AI text
+
+class ReportRead(BaseModel):
+    id: int
+    month: str
+    content: str
+    status: str
+    created_at: datetime
+    class Config:
+        from_attributes = True
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+# ---------- WORKLOAD MONITORING SCHEMAS ----------
 class WorkloadLogCreate(BaseModel):
     phc_id: int
     current_queue_count: int
@@ -215,27 +236,10 @@ class WorkloadLogResponse(BaseModel):
 
 
 
+class DailyWorkloadCreate(BaseModel):
+    patient_count: int
 
-
-class FeedbackCreate(BaseModel):
-    phc_id: int
-    phc_name: str
-    category: str
+class ForecastResponse(BaseModel):
+    tomorrow_load: int
+    status: str # "Optimal" or "Overwhelmed"
     message: str
-
-
-class FeedbackUpdate(BaseModel):
-    status: str  # pending / resolved / in-progress
-
-
-class FeedbackRead(BaseModel):
-    id: int
-    phc_id: int
-    phc_name: str
-    category: str
-    message: str
-    status: str
-    created_at: datetime
-
-    class Config:
-        orm_mode = True
