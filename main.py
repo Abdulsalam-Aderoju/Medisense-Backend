@@ -6,8 +6,10 @@ from sqlalchemy.orm import Session
 from fastapi.middleware.cors import CORSMiddleware
 
 origins = [
-    "*"  # Allows all origins (easiest for development)
+    "http://localhost:3000",
+    "https://medisense-frontend-khaki.vercel.app", 
 ]
+
 
 
 
